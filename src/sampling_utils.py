@@ -105,26 +105,116 @@ def _allocate_samples(data, times_by_day, locations_by_county, idx):
         av_locs_sample)
 
 
+def _sample_time_and_space_pred(
+        n_days,
+        n_counties,
+        times_by_day,
+        day_offset,
+        num_tps,
+        av_times_sample,
+        locs_by_county,
+        av_locs_sample,
+        rng_time,
+        rng_loc):
+
+    n_total = n_days * n_counties * num_tps
+    rnd_time_sample = np.floor(
+        av_times_sample *
+        rng_time.random(n_total)).astype('int32')
+
+    t_all = [times_by_day[day_offset + i][rnd_time_sample[(i * n_counties +j) * num_tps + x]]
+             for i in range(n_days) for j in range(n_counties) for x in range(num_tps)]
+    
+    rnd_loc_sample = np.floor(av_locs_sample * rng_loc.random((n_total,))).astype('int32')
+
+    x_all = [locs_by_county[j][rnd_loc_sample[(i * n_counties + j) * num_tps + x]]
+             for i in range(n_days) for j in range(n_counties) for x in range(num_tps)]
+
+    return t_all, x_all
+
+
 def _sample_time_and_space(
         n_counties,
         n_total,
+        times_by_day,
         day_offset,
         day_samples,
         av_times_sample,
+        locs_by_county,
         county_samples,
         av_locs_sample,
-        rnd_times,
-        rnd_locs):
+        rng_time,
+        rng_loc):
     """ fast kernel for time/space samples """
-    
+
     n_all = n_total * n_counties
     av_times_sample_all = np.tile(av_times_sample, n_counties)
-    rnd_times_sampe_all = np.floor(av_times_sample_all * rnd_times.random((n_all,))).astype('int32')
+    rnd_times_sample_all = np.floor(
+        av_times_sample_all *
+        rng_time.random(
+            (n_all,))).astype('int32')
 
-    # TODO
-    # t_all = [times_by_day]
+    # result 1: sampled ts
+    t_all = [times_by_day[day_offset + i][rnd_times_sample_all[j * n_total + i]]
+             for j in range(n_counties) for i, days in enumerate(day_samples)]
 
+    av_locs_sample_all = np.tile(av_locs_sample, n_counties)
+    rnd_locs_sample_all = np.floor(
+        av_locs_sample_all *
+        rng_loc.random(
+            (n_total,
+             ))).astype('int32')
+
+    x_all = [locs_by_county[c][rnd_locs_sample_all[j * n_total + i]]
+             for j in range(n_counties) for i, c in enumerate(county_samples)]
+
+    return t_all, x_all
+
+
+def prediction_ia_effects(data, times_by_day, locations_by_county, idx):
+
+    # to numpy 
+    (times_by_day, locations_by_county) = _np_times_and_counties(times_by_day, locations_by_county)
+
+    (n_total,
+     day_offset,
+     day_samples,
+     av_times_sample,
+     county_samples,
+     av_locs_sample) = _allocate_samples(data,
+                                         times_by_day,
+                                         locations_by_county,
+                                         idx)
+    t_pred, x_pred = _sample_time_and_space_pred(
+    )
+
+    # return (
+    #     n_total,
+    #     day_offset,
+    #     day_samples,
+    #     av_times_sample,
+    #     county_samples,
+    #     av_locs_sample)
+
+
+def data_ia_effects():
     pass
+
+
+def sample_ia_effects(data, days, counties, num_tps=10):
+
+    n_days = len(data.index)
+    n_counties = len(data.columns)
+    pred_data = pd.DataFrame(num_tps, index=data.index, columns=data.columns)
+    idx = np.empty([len(data.index)], dtype='bool')
+    idx.fill(True)
+
+    t_pred, x_pred = prediction_ia_effects()
+    t_data, x_data = data_ia_effects()
+
+    res = ia_bfs(t_pred, x_pred, t_data, x_data)
+
+    return res
 
 
 def sample_time_and_space(data, times_by_day, locations_by_county):
@@ -191,8 +281,8 @@ def jacobian_sq(latitude, R=6365.902):
 
     Computes the "square root" (Cholesky factor) of the Jacobian of the cartesian projection from polar coordinates (in degrees longitude, latitude) onto cartesian coordinates (in km east/west, north/south) at a given latitude (the projection's Jacobian is invariante wrt. longitude).
     """
-    return R * (np.pi / 180.0) * (abs(tt.cos(tt.deg2rad(latitude))) * \
-                np.array([[1.0, 0.0], [0.0, 0.0]]) + np.array([[0.0, 0.0], [0.0, 1.0]]))
+    return R * (np.pi / 180.0) * (abs(tt.cos(tt.deg2rad(latitude))) *
+                                  np.array([[1.0, 0.0], [0.0, 0.0]]) + np.array([[0.0, 0.0], [0.0, 1.0]]))
 
 
 def build_ia_bfs(temporal_bfs, spatial_bfs):
@@ -237,6 +327,7 @@ class IAEffectSampler(object):
             num_tps=10,
             time_horizon=5,
             verbose=True):
+
         self.ia_bfs = build_ia_bfs(temporal_bfs, spatial_bfs)
         self.times_by_day = times_by_day
         self.locations_by_county = locations_by_county
