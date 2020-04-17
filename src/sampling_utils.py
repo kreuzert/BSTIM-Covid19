@@ -122,10 +122,15 @@ def _sample_time_and_space_pred(
         av_times_sample *
         rng_time.random(n_total)).astype('int32')
 
-    t_all = [times_by_day[day_offset + i][rnd_time_sample[(i * n_counties +j) * num_tps + x]]
-             for i in range(n_days) for j in range(n_counties) for x in range(num_tps)]
-    
-    rnd_loc_sample = np.floor(av_locs_sample * rng_loc.random((n_total,))).astype('int32')
+    t_all = [times_by_day[day_offset +
+                          i][rnd_time_sample[(i *
+                                              n_counties +
+                                              j) *
+                                             num_tps +
+                                             x]] for i in range(n_days) for j in range(n_counties) for x in range(num_tps)]
+
+    rnd_loc_sample = np.floor(av_locs_sample *
+                              rng_loc.random((n_total,))).astype('int32')
 
     x_all = [locs_by_county[j][rnd_loc_sample[(i * n_counties + j) * num_tps + x]]
              for i in range(n_days) for j in range(n_counties) for x in range(num_tps)]
@@ -171,53 +176,122 @@ def _sample_time_and_space(
     return t_all, x_all
 
 
-def prediction_ia_effects(data, times_by_day, locations_by_county, idx):
+def prediction_ia_effects(
+        data,
+        times_by_day,
+        locations_by_county,
+        idx,
+        num_tps):
 
-    # to numpy 
-    (times_by_day, locations_by_county) = _np_times_and_counties(times_by_day, locations_by_county)
+    rng_time = np.random.Generator(np.random.PCG64())
+    rng_loc = np.random.Generator(np.random.PCG64())
 
-    (n_total,
-     day_offset,
-     day_samples,
-     av_times_sample,
-     county_samples,
-     av_locs_sample) = _allocate_samples(data,
-                                         times_by_day,
-                                         locations_by_county,
-                                         idx)
-    t_pred, x_pred = _sample_time_and_space_pred(
-    )
-
-    # return (
-    #     n_total,
-    #     day_offset,
-    #     day_samples,
-    #     av_times_sample,
-    #     county_samples,
-    #     av_locs_sample)
-
-
-def data_ia_effects():
-    pass
-
-
-def sample_ia_effects(data, days, counties, num_tps=10):
+    # to numpy
+    (times_by_day, locations_by_county) = _np_times_and_counties(
+        times_by_day, locations_by_county)
 
     n_days = len(data.index)
     n_counties = len(data.columns)
+
+    t_pred = []
+    x_pred = []
+
+    for i, _ in enumerate(data.index):
+        for j, _ in enumerate(data.columns):
+            offset = (i * n_counties + j) * num_tps
+
+            t_pred = t_pred + t_pred_all[offset:offset + num_tps]
+            x_pred = x_pred + x_pred_all[offset:offset + num_tps]
+
+    return t_pred, x_pred
+
+
+def sample_ia_effects(data, days, counties, ia_bfs, num_features, num_tps=10):
+
+    rng_time_dat = np.random.Generator(np.random.PCG64(42))
+    rng_loc_dat = np.random.Generator(np.random.PCG64(42))
+    rng_time_pred = np.random.Generator(np.random.PCG64(42))
+    rng_loc_pred = np.random.Generator(np.random.PCG64(42))
+
     pred_data = pd.DataFrame(num_tps, index=data.index, columns=data.columns)
     idx = np.empty([len(data.index)], dtype='bool')
     idx.fill(True)
+    n_days = len(data.index)
+    n_counties = len(data.columns)
 
-    t_pred, x_pred = prediction_ia_effects()
-    t_data, x_data = data_ia_effects()
+    # to numpy
+    (times_by_day, locations_by_county) = _np_times_and_counties(days, counties)
 
-    res = ia_bfs(t_pred, x_pred, t_data, x_data)
+    (_,
+     day_offset,
+     _,
+     av_times_sample,
+     _,
+     av_locs_sample) = _allocate_samples(pred_data,
+                                         times_by_day,
+                                         locations_by_county,
+                                         idx)
 
-    return res
+    t_pred_all, x_pred_all = _sample_time_and_space_pred(n_days,
+                                                         n_counties,
+                                                         times_by_day,
+                                                         day_offset,
+                                                         num_tps,
+                                                         av_times_sample,
+                                                         locations_by_county,
+                                                         av_locs_sample,
+                                                         rng_time_pred,
+                                                         rng_loc_pred)
+
+    _to_timestamp = np.frompyfunc(datetime.datetime.timestamp, 1, 1)
+    result = np.zeros( (len(days), len(counties), num_features), dtype=np.float32)
+    for i, day in enumerate(data.index):
+
+        idx = ((day - pd.Timedelta(days=5)) <= data.index) * (data.index < day)
+        subtable = data.iloc[idx]
+
+        if subtable.size != 0:
+            (n_total,
+             day_offset,
+             day_samples,
+             av_times_sample,
+             county_samples,
+             av_locs_sample) = _allocate_samples(data,
+                                                 times_by_day,
+                                                 locations_by_county,
+                                                 idx)
+
+            t_data_all, x_data_all = _sample_time_and_space(n_counties,
+                                                            n_total,
+                                                            times_by_day,
+                                                            day_offset,
+                                                            day_samples,
+                                                            av_times_sample,
+                                                            locations_by_county,
+                                                            county_samples,
+                                                            av_locs_sample,
+                                                            rng_time_dat,
+                                                            rng_loc_dat)
+
+        for j, county in enumerate(data.columns):
+
+            if subtable.size != 0:
+                t_data = t_data_all[j * n_total:(j + 1) * n_total]
+                x_data = x_data_all[j * n_total:(j + 1) * n_total]
+            else:
+                t_data = []
+                x_data = []
+
+            offset = (i * n_counties + j) * num_tps
+            t_pred = t_pred_all[offset:offset + num_tps]
+            x_pred = x_pred_all[offset:offset + num_tps]
+
+            result[i, j, :] = ia_bfs(_to_timestamp(t_pred), x_pred, _to_timestamp(t_data), x_data)
+
+    return result
 
 
-def sample_time_and_space(data, times_by_day, locations_by_county):
+def sample_time_and_space(data, times_by_day, locations_by_county, rng_time, rng_loc):
     n_total = data.sum().sum()
     t_all = np.empty((n_total,), dtype=object)
     x_all = np.empty((n_total, 2))
@@ -227,12 +301,14 @@ def sample_time_and_space(data, times_by_day, locations_by_county):
         for (day, n) in series.iteritems():
             # draw n random times
             times = times_by_day[day]
-            idx = np.random.choice(len(times), n)
+            # idx = np.random.choice(len(times), n)
+            idx = np.floor( (n*[len(times)]) * rng_time.random((n,))).astype('int32')
             t_all[i:i + n] = times[idx]
 
             # draw n random locations
             locs = locations_by_county[county_id]
-            idx = np.random.choice(locs.shape[0], n)
+            # idx = np.random.choice(locs.shape[0], n)
+            idx = np.floor( (n*[locs.shape[0]]) * rng_loc.random((n,))).astype('int32')
             x_all[i:i + n, :] = locs[idx, :]
 
             i += n
@@ -340,6 +416,12 @@ class IAEffectSampler(object):
         self.verbose = verbose
 
     def __call__(self, days, counties):
+
+        rng_time = np.random.Generator(np.random.PCG64(42))
+        rng_loc = np.random.Generator(np.random.PCG64(42))
+        rng_loc_pred = np.random.Generator(np.random.PCG64(42))
+        rng_time_pred = np.random.Generator(np.random.PCG64(42))
+
         res = np.zeros((len(days), len(counties),
                         self.num_features), dtype=np.float32)
         for i, day in enumerate(days):
@@ -347,10 +429,17 @@ class IAEffectSampler(object):
                 idx = ((day - pd.Timedelta(days=5)) <=
                        self.data.index) * (self.data.index < day)
                 # print("sampling day {} for county {} using data in range {}".format(day, county, idx))
-                t_data, x_data = sample_time_and_space(
-                    self.data.iloc[idx], self.times_by_day, self.locations_by_county)
+                t_data, x_data = sample_time_and_space(self.data.iloc[idx],
+                                                       self.times_by_day,
+                                                       self.locations_by_county,
+                                                       rng_time,
+                                                       rng_loc)
                 t_pred, x_pred = sample_time_and_space(pd.DataFrame(self.num_tps, index=[
-                                                       day], columns=[county]), self.times_by_day, self.locations_by_county)
+                                                       day], columns=[county]),
+                                                       self.times_by_day,
+                                                       self.locations_by_county,
+                                                       rng_time_pred,
+                                                       rng_loc_pred)
                 res[i, j, :] = self.ia_bfs(self._to_timestamp(
                     t_pred), x_pred, self._to_timestamp(t_data), x_data)
             frac = (i + 1) / len(days)
