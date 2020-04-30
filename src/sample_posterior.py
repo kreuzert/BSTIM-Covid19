@@ -20,6 +20,11 @@ model_complexity, disease = combinations[i]
 use_interactions, use_report_delay = combinations_ia_report[model_complexity]
 prediction_region = "germany"
 
+
+##### OVERWRITE FOR IA(t) TEST #####
+use_interactions = True
+use_report_delay = True
+
 filename_params = "../data/mcmc_samples_backup/parameters_{}_{}_{}".format(
     disease, use_interactions, use_report_delay)
 filename_pred = "../data/mcmc_samples_backup/predictions_{}_{}_{}.pkl".format(

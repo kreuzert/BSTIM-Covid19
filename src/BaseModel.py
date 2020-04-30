@@ -191,6 +191,12 @@ class BaseModel(object):
         self.include_periodic = include_periodic
         self.trange = trange
 
+
+        # hardcoded for testing: Start Ger; Lockdown Ger; First Restr. lifeted Ger
+        ia_trend_switchpoints = [pd.Timestamp('2020-01-28'), 
+                                 pd.Timestamp('2020-03-16'), 
+                                 pd.Timestamp('2020-04-20')]
+
         self.features = {
             "temporal_trend": {
                 "temporal_polynomial_{}".format(i): TemporalPolynomialFeature(
@@ -207,6 +213,9 @@ class BaseModel(object):
                         "[0-5)",
                         "[5-20)",
                         "[20-65)"]} if self.include_demographics else {},
+            "interaction_trend": {
+                "ia_trend_sigmoid_{}".format(i): TemporalSigmoidFeature(
+                    ia_trend_switchpoints[i], 2.0) for i in range(3)},
             "temporal_report_delay" : {
                  "report_delay": ReportDelayPolynomialFeature(
                      pd.Timestamp('2020-04-17'), pd.Timestamp('2020-04-22'), 4)}
@@ -243,6 +252,9 @@ class BaseModel(object):
         # extract features
         features = self.evaluate_features(days, counties)
         Y_obs = target.stack().values.astype(np.float32)
+
+        I_T = features["interaction_trend"].values.astype(np.float32)
+
         T_S = features["temporal_seasonal"].values.astype(np.float32)
         T_T = features["temporal_trend"].values.astype(np.float32)
         T_D = features["temporal_report_delay"].values.astype(np.float32)
@@ -253,83 +265,60 @@ class BaseModel(object):
 
         # extract dimensions
         num_obs = np.prod(target.shape)
+        num_ia_t = I_T.shape[1]
         num_t_s = T_S.shape[1]
         num_t_t = T_T.shape[1]
         num_t_d = T_D.shape[1]
         num_ts = TS.shape[1]
 
-        if self.include_ia:
+        with pm.Model() as self.model:
+            # interaction effects are generated externally -> flat prior
+            IA = pm.Flat("IA", testval=np.ones(
+                  (num_obs, self.num_ia)), shape=(num_obs, self.num_ia))
 
-            with pm.Model() as self.model:
-                # interaction effects are generated externally -> flat prior
-                IA = pm.Flat("IA", testval=np.ones(
-                      (num_obs, self.num_ia)), shape=(num_obs, self.num_ia))
+            # priors - neg binomial
+            # δ = 1/√α
+            δ = pm.HalfCauchy("δ", 10, testval=1.0)
+            α = pm.Deterministic("α", np.float32(1.0) / δ)
 
-                # priors
-                # NOTE: Vary parameters over time -> W_ia dependent on time
-                # δ = 1/√α
-                δ = pm.HalfCauchy("δ", 10, testval=1.0)
-                α = pm.Deterministic("α", np.float32(1.0) / δ)
-                W_ia = pm.Normal("W_ia", mu=0, sd=10, testval=np.zeros(
-                     self.num_ia), shape=self.num_ia)
-                W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
-                                  testval=np.zeros(num_t_s), shape=num_t_s)
-                W_t_t = pm.Normal("W_t_t", mu=0, sd=10,
-                                  testval=np.zeros(num_t_t), shape=num_t_t)
-                W_t_d = pm.Normal("W_t_d", mu=0, sd=10,
-                                  testval=np.zeros(num_t_d), shape=num_t_d)
-                W_ts = pm.Normal("W_ts", mu=0, sd=10,
-                                 testval=np.zeros(num_ts), shape=num_ts)
-                self.param_names = ["δ", "W_ia", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
-                self.params = [δ, W_ia, W_t_s, W_t_t, W_t_d, W_ts]
+            # time-varying ~~~ W_ia -> NUM_IA x 1 -> mu dims?
+            # TODO: match up the dimensions
+            W_ia_t = pm.Normal("W_t_ia", mu=0, sd=10, 
+                               testval=np.zeros(num_ia_t), shape=num_ia_t)
+            kappa = pm.Deterministic("kappa", tt.dot(I_T, W_ia_t))
+            sigma_ia = pm.HalfCauchy("sigma_ia", 10, testval=1.0)
 
-                # calculate interaction effect 
-                IA_ef = tt.dot(tt.dot(IA, self.Q), W_ia)
+            W_ia = pm.Normal("W_ia", mu=kappa, sd=sigma_ia, 
+                             testval=np.zeros(self.num_ia), shape=self.num_ia)
 
-                # calculate mean rates
-                μ = pm.Deterministic(
-                    "μ",
-                    tt.exp(
-                        IA_ef +
-                        tt.dot(T_S, W_t_s) + 
-                        tt.dot(T_T, W_t_t) +
-                        tt.dot(T_D, W_t_d) +
-                        tt.dot(TS, W_ts) +
-                        log_exposure))
+            # neg binomial model
+            W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
+                              testval=np.zeros(num_t_s), shape=num_t_s)
+            W_t_t = pm.Normal("W_t_t", mu=0, sd=10,
+                              testval=np.zeros(num_t_t), shape=num_t_t)
+            W_t_d = pm.Normal("W_t_d", mu=0, sd=10,
+                              testval=np.zeros(num_t_d), shape=num_t_d)
+            W_ts = pm.Normal("W_ts", mu=0, sd=10,
+                             testval=np.zeros(num_ts), shape=num_ts)
+            self.param_names = ["δ", "W_ia_t", "W_ia", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
+            self.params = [δ, W_ia_t, W_ia, W_t_s, W_t_t, W_t_d, W_ts]
 
-                # constrain to observations
-                pm.NegativeBinomial("Y", mu=μ, alpha=α, observed=Y_obs)
+            # calculate interaction effect 
+            IA_ef = tt.dot(tt.dot(IA, self.Q), W_ia)
 
-        else:
+            # calculate mean rates
+            μ = pm.Deterministic(
+                "μ",
+                tt.exp(
+                    IA_ef +
+                    tt.dot(T_S, W_t_s) + 
+                    tt.dot(T_T, W_t_t) +
+                    tt.dot(T_D, W_t_d) +
+                    tt.dot(TS, W_ts) +
+                    log_exposure))
 
-            with pm.Model() as self.model:
-                # priors
-                # δ = 1/√α
-                δ = pm.HalfCauchy("δ", 10, testval=1.0)
-                α = pm.Deterministic("α", np.float32(1.0) / δ)
-                W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
-                                  testval=np.zeros(num_t_s), shape=num_t_s)
-                W_t_t = pm.Normal("W_t_t", mu=0, sd=10,
-                                  testval=np.zeros(num_t_t), shape=num_t_t)
-                W_t_d = pm.Normal("W_t_d", mu=0, sd=10,
-                                  testval=np.zeros(num_t_d), shape=num_t_d)
-                W_ts = pm.Normal("W_ts", mu=0, sd=10,
-                                 testval=np.zeros(num_ts), shape=num_ts)
-                self.param_names = ["δ", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
-                self.params = [δ, W_t_s, W_t_t, W_t_d, W_ts]
-
-                # calculate mean rates
-                μ = pm.Deterministic(
-                    "μ",
-                    tt.exp(
-                        tt.dot(T_S, W_t_s) + 
-                        tt.dot(T_T, W_t_t) +
-                        tt.dot(T_D, W_t_d) +
-                        tt.dot(TS, W_ts) +
-                        log_exposure))
-
-                # constrain to observations
-                pm.NegativeBinomial("Y", mu=μ, alpha=α, observed=Y_obs)
+            # constrain to observations
+            pm.NegativeBinomial("Y", mu=μ, alpha=α, observed=Y_obs)
 
     def map_estimate():
         """ TODO Q: how to include IA?"""
@@ -360,30 +349,20 @@ class BaseModel(object):
         if chains is None:
             chains = max(2, cores)
 
-        if self.include_ia:
-            with self.model:
-                # run!
-                ia_effect_loader = IAEffectLoader(
-                    self.model.IA,
-                    self.ia_effect_filenames,
-                    target.index,
-                    target.columns)
-                nuts = pm.step_methods.NUTS(
-                    vars=self.params,
-                    target_accept=target_accept,
-                    max_treedepth=max_treedepth)
-                steps = [ia_effect_loader, nuts]
-                trace = pm.sample(samples, steps, chains=chains, cores=cores,
-                                  compute_convergence_checks=False, **kwargs)
-        else:
-            with self.model:
-                # run!
-                nuts = pm.step_methods.NUTS(
-                    vars=self.params,
-                    target_accept=target_accept,
-                    max_treedepth=max_treedepth)
-                trace = pm.sample(samples, nuts, chains=chains, cores=cores,
-                                  compute_convergence_checks=False, **kwargs)
+        with self.model:
+            # run!
+            ia_effect_loader = IAEffectLoader(
+                self.model.IA,
+                self.ia_effect_filenames,
+                target.index,
+                target.columns)
+            nuts = pm.step_methods.NUTS(
+                vars=self.params,
+                target_accept=target_accept,
+                max_treedepth=max_treedepth)
+            steps = [ia_effect_loader, nuts]
+            trace = pm.sample(samples, steps, chains=chains, cores=cores,
+                              compute_convergence_checks=False, **kwargs)
         return trace
 
     def sample_predictions(
