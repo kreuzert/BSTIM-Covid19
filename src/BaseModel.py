@@ -266,6 +266,7 @@ class BaseModel(object):
         # extract dimensions
         num_obs = np.prod(target.shape)
         num_ia_t = I_T.shape[1]
+
         num_t_s = T_S.shape[1]
         num_t_t = T_T.shape[1]
         num_t_d = T_D.shape[1]

@@ -10,6 +10,9 @@
     * IA Kernel with limited temporal support & different sets of weights.
     * rm delay polynomial from model for predictions
 
+* Sanity Checks:
+    * negative report delay feature
+
 * Dashboard:
     * temporal evolution of deviance per county deviance for growing test set must be implemented
 
