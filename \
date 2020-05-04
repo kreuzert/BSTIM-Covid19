@@ -193,9 +193,7 @@ class BaseModel(object):
 
 
         # hardcoded for testing: Start Ger; Lockdown Ger; First Restr. lifeted Ger
-        ia_trend_switchpoints = [pd.Timestamp('2020-01-28'), 
-                                 pd.Timestamp('2020-03-16'), 
-                                 pd.Timestamp('2020-04-20')]
+        ia_trend_switchpoints = [pd.Timestamp('2020-01-28'), pd.Timestamp('2020-03-03'), pd.Timestamp('2020-04-20')]
 
         self.features = {
             "temporal_trend": {
@@ -215,7 +213,7 @@ class BaseModel(object):
                         "[20-65)"]} if self.include_demographics else {},
             "interaction_trend": {
                 "ia_trend_sigmoid_{}".format(i): TemporalSigmoidFeature(
-                    ia_trend_switchpoints[i], 2.0) for i in range(3)},
+                    ia_trend_switchpoint[i])} for i in range(3) if self.include_ia_trend else {},
             "temporal_report_delay" : {
                  "report_delay": ReportDelayPolynomialFeature(
                      pd.Timestamp('2020-04-17'), pd.Timestamp('2020-04-22'), 4)}
@@ -265,7 +263,6 @@ class BaseModel(object):
 
         # extract dimensions
         num_obs = np.prod(target.shape)
-        num_ia_t = I_T.shape[1]
         num_t_s = T_S.shape[1]
         num_t_t = T_T.shape[1]
         num_t_d = T_D.shape[1]
@@ -276,22 +273,14 @@ class BaseModel(object):
             IA = pm.Flat("IA", testval=np.ones(
                   (num_obs, self.num_ia)), shape=(num_obs, self.num_ia))
 
-            # priors - neg binomial
+            # priors
+            # NOTE: Vary parameters over time -> W_ia dependent on time
             # δ = 1/√α
             δ = pm.HalfCauchy("δ", 10, testval=1.0)
             α = pm.Deterministic("α", np.float32(1.0) / δ)
-
-            # time-varying ~~~ W_ia -> NUM_IA x 1 -> mu dims?
-            # TODO: match up the dimensions
-            W_ia_t = pm.Normal("W_t_ia", mu=0, sd=10, 
-                               testval=np.zeros(num_ia_t), shape=num_ia_t)
-            kappa = pm.Deterministic("kappa", tt.dot(I_T, W_ia_t))
-            sigma_ia = pm.HalfCauchy("sigma_ia", 10, testval=1.0)
-
-            W_ia = pm.Normal("W_ia", mu=kappa, sd=sigma_ia, 
-                             testval=np.zeros(self.num_ia), shape=self.num_ia)
-
-            # neg binomial model
+            kappa = pm.
+            W_ia = pm.Normal("W_ia", mu=0, sd=10, testval=np.zeros(
+                 self.num_ia), shape=self.num_ia)
             W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
                               testval=np.zeros(num_t_s), shape=num_t_s)
             W_t_t = pm.Normal("W_t_t", mu=0, sd=10,
@@ -300,8 +289,8 @@ class BaseModel(object):
                               testval=np.zeros(num_t_d), shape=num_t_d)
             W_ts = pm.Normal("W_ts", mu=0, sd=10,
                              testval=np.zeros(num_ts), shape=num_ts)
-            self.param_names = ["δ", "W_ia_t", "W_ia", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
-            self.params = [δ, W_ia_t, W_ia, W_t_s, W_t_t, W_t_d, W_ts]
+            self.param_names = ["δ", "W_ia", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
+            self.params = [δ, W_ia, W_t_s, W_t_t, W_t_d, W_ts]
 
             # calculate interaction effect 
             IA_ef = tt.dot(tt.dot(IA, self.Q), W_ia)
@@ -349,20 +338,30 @@ class BaseModel(object):
         if chains is None:
             chains = max(2, cores)
 
-        with self.model:
-            # run!
-            ia_effect_loader = IAEffectLoader(
-                self.model.IA,
-                self.ia_effect_filenames,
-                target.index,
-                target.columns)
-            nuts = pm.step_methods.NUTS(
-                vars=self.params,
-                target_accept=target_accept,
-                max_treedepth=max_treedepth)
-            steps = [ia_effect_loader, nuts]
-            trace = pm.sample(samples, steps, chains=chains, cores=cores,
-                              compute_convergence_checks=False, **kwargs)
+        if self.include_ia:
+            with self.model:
+                # run!
+                ia_effect_loader = IAEffectLoader(
+                    self.model.IA,
+                    self.ia_effect_filenames,
+                    target.index,
+                    target.columns)
+                nuts = pm.step_methods.NUTS(
+                    vars=self.params,
+                    target_accept=target_accept,
+                    max_treedepth=max_treedepth)
+                steps = [ia_effect_loader, nuts]
+                trace = pm.sample(samples, steps, chains=chains, cores=cores,
+                                  compute_convergence_checks=False, **kwargs)
+        else:
+            with self.model:
+                # run!
+                nuts = pm.step_methods.NUTS(
+                    vars=self.params,
+                    target_accept=target_accept,
+                    max_treedepth=max_treedepth)
+                trace = pm.sample(samples, nuts, chains=chains, cores=cores,
+                                  compute_convergence_checks=False, **kwargs)
         return trace
 
     def sample_predictions(
@@ -382,15 +381,14 @@ class BaseModel(object):
 
         # extract coefficient samples
         α = parameters["α"]
+        W_ia = parameters["W_ia"]
         W_t_s = parameters["W_t_s"]
         W_t_t = parameters["W_t_t"]
         W_t_d = parameters["W_t_d"]
         W_ts = parameters["W_ts"]
 
-        if self.include_ia:
-            W_ia = parameters["W_ia"]
-            ia_l = IAEffectLoader(None, self.ia_effect_filenames,
-                                  target_days, target_counties)
+        ia_l = IAEffectLoader(None, self.ia_effect_filenames,
+                              target_days, target_counties)
 
         num_predictions = len(target_days) * len(target_counties)
         num_parameter_samples = α.size
@@ -403,27 +401,18 @@ class BaseModel(object):
         # for i in range(num_parameter_samples):
         #     mean_delay += np.dot(T_D, W_t_d[i])
 
-        # NOTE: the delay polynomial is left out here!
         # mean_delay /= num_parameter_samples
-        if self.include_ia:
-            for i in range(num_parameter_samples):
-                IA_ef = np.dot(
-                    np.dot(ia_l.samples[np.random.choice(len(ia_l.samples))], self.Q), W_ia[i])
-                μ[i, :] = np.exp(IA_ef +
-                                 np.dot(T_S, W_t_s[i]) +
-                                 np.dot(T_T, W_t_t[i]) +
-                                 np.dot(TS, W_ts[i]) +
-                                 log_exposure)
-                y[i, :] = pm.NegativeBinomial.dist(mu=μ[i, :], alpha=α[i]).random()
 
-        else:
-            for i in range(num_parameter_samples):
-                μ[i, :] = np.exp(np.dot(T_S, W_t_s[i]) +
-                                 np.dot(T_T, W_t_t[i]) +
-                                 np.dot(TS, W_ts[i]) +
-                                 log_exposure)
-                y[i, :] = pm.NegativeBinomial.dist(mu=μ[i, :], alpha=α[i]).random()
-
-
+        for i in range(num_parameter_samples):
+            IA_ef = np.dot(
+                np.dot(ia_l.samples[np.random.choice(len(ia_l.samples))], self.Q), W_ia[i])
+            μ[i, :] = np.exp(IA_ef +
+                             np.dot(T_S, W_t_s[i]) +
+                             np.dot(T_T, W_t_t[i]) +
+                             # mean_delay +
+                             # np.dot(T_D, W_t_d[i]) + 
+                             np.dot(TS, W_ts[i]) +
+                             log_exposure)
+            y[i, :] = pm.NegativeBinomial.dist(mu=μ[i, :], alpha=α[i]).random()
 
         return {"y": y, "μ": μ, "α": α}
