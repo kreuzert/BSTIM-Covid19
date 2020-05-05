@@ -213,9 +213,9 @@ class BaseModel(object):
                         "[0-5)",
                         "[5-20)",
                         "[20-65)"]} if self.include_demographics else {},
-            "interaction_trend": {
-                "ia_trend_sigmoid_{}".format(i): TemporalSigmoidFeature(
-                    ia_trend_switchpoints[i], 2.0) for i in range(3)},
+            # "interaction_trend": {
+            #     "ia_trend_sigmoid_{}".format(i): TemporalSigmoidFeature(
+            #         ia_trend_switchpoints[i], 2.0) for i in range(3)},
             "temporal_report_delay" : {
                  "report_delay": ReportDelayPolynomialFeature(
                      pd.Timestamp('2020-04-17'), pd.Timestamp('2020-04-22'), 4)}
@@ -252,8 +252,10 @@ class BaseModel(object):
         # extract features
         features = self.evaluate_features(days, counties)
         Y_obs = target.stack().values.astype(np.float32)
+        
 
-        I_T = features["interaction_trend"].values.astype(np.float32)
+        # I_T = features["interaction_trend"].values.astype(np.float32)
+        day_feature = np.tile((days - days.min()).days, len(counties))
 
         T_S = features["temporal_seasonal"].values.astype(np.float32)
         T_T = features["temporal_trend"].values.astype(np.float32)
@@ -265,7 +267,7 @@ class BaseModel(object):
 
         # extract dimensions
         num_obs = np.prod(target.shape)
-        num_ia_t = I_T.shape[1]
+        # num_ia_t = I_T.shape[1]
 
         num_t_s = T_S.shape[1]
         num_t_t = T_T.shape[1]
@@ -282,15 +284,26 @@ class BaseModel(object):
             δ = pm.HalfCauchy("δ", 10, testval=1.0)
             α = pm.Deterministic("α", np.float32(1.0) / δ)
 
-            # time-varying ~~~ W_ia -> NUM_IA x 1 -> mu dims?
+            # time-varying ~~~ W_ia ->
             # TODO: match up the dimensions
-            W_ia_t = pm.Normal("W_t_ia", mu=0, sd=10, 
-                               testval=np.zeros(num_ia_t), shape=num_ia_t)
-            kappa = pm.Deterministic("kappa", tt.dot(I_T, W_ia_t))
-            sigma_ia = pm.HalfCauchy("sigma_ia", 10, testval=1.0)
+            # W_ia_t = pm.Normal("W_t_ia", mu=0, sd=10, 
+            #                    testval=np.zeros(num_ia_t), shape=num_ia_t)
+            # kappa = pm.Deterministic("kappa", tt.dot(I_T, W_ia_t))
+            # sigma_ia = pm.HalfCauchy("sigma_ia", 10, testval=1.0)
 
-            W_ia = pm.Normal("W_ia", mu=kappa, sd=sigma_ia, 
+            switchpoint = pm.DiscreteUniform('switchpoint', 
+                                             lower=day_feature.min(), 
+                                             upper=day_feature.max(), 
+                                             testval=42)
+
+            W_ia1 = pm.Normal("W_ia1", mu=0, sd=10,
                              testval=np.zeros(self.num_ia), shape=self.num_ia)
+            W_ia2 = pm.Normal("W_ia2", mu=0, sd=10,
+                             testval=np.zeros(self.num_ia), shape=self.num_ia)
+            IA_ef = pm.math.switch(switchpoint >= day_feature,
+                                tt.dot(tt.dot(IA, self.Q), W_ia1),
+                                tt.dot(tt.dot(IA, self.Q), W_ia2))
+
 
             # neg binomial model
             W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
@@ -301,11 +314,11 @@ class BaseModel(object):
                               testval=np.zeros(num_t_d), shape=num_t_d)
             W_ts = pm.Normal("W_ts", mu=0, sd=10,
                              testval=np.zeros(num_ts), shape=num_ts)
-            self.param_names = ["δ", "W_ia_t", "W_ia", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
-            self.params = [δ, W_ia_t, W_ia, W_t_s, W_t_t, W_t_d, W_ts]
+            self.param_names = ["δ", "W_ia1", "W_ia2", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
+            self.params = [δ, W_ia1, W_ia2, W_t_s, W_t_t, W_t_d, W_ts]
 
             # calculate interaction effect 
-            IA_ef = tt.dot(tt.dot(IA, self.Q), W_ia)
+            #IA_ef = tt.dot(tt.dot(IA, self.Q), W_ia)
 
             # calculate mean rates
             μ = pm.Deterministic(

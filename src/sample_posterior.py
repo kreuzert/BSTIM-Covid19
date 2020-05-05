@@ -55,7 +55,7 @@ model = BaseModel(tspan,
                                                                 i) for i in range(100)],
                   include_ia=use_interactions,
                   include_report_delay=use_report_delay)
-
+"""
 print("Sampling parameters on the training set.")
 trace = model.sample_parameters(
     target_train,
@@ -78,3 +78,4 @@ filename_pred = "../data/mcmc_samples_backup/predictions_{}_{}_{}.pkl".format(
 pred = model.sample_predictions(target_train.index, target_train.columns, trace)
 with open(filename_pred, 'wb') as f:
      pkl.dump(pred, f)
+"""
