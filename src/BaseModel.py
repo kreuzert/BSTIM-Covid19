@@ -343,7 +343,7 @@ class BaseModel(object):
     def sample_predictions(
             self,
             target_days,
-            target_counties,
+            target_counties, 
             parameters,
             init="auto"):
         # extract features

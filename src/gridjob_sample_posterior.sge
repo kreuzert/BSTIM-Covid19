@@ -3,12 +3,12 @@
 #$ -t 1-9
 #$ -l mem=14G
 #$ -m n
-#$ -q ni.q
-#$ -l h='!(ramsauer.ikw.uni-osnabrueck.de|vector.cv.uni-osnabrueck.de|righty.ni.uni-osnabrueck.de)'
-#$ -wd /net/store/ni/projects/BSTIM/src/
-#$ -e /net/store/ni/projects/BSTIM/logs_backup/e_$TASK_ID.txt
-#$ -o /net/store/ni/projects/BSTIM/logs_backup/o_$TASK_ID.txt
-#$ -pe default 4
+echo "#$ -q ni.q"
+echo "#$ -l h='!(ramsauer.ikw.uni-osnabrueck.de|vector.cv.uni-osnabrueck.de|righty.ni.uni-osnabrueck.de)'"
+#$ -wd /net/projects/scratch/summer/valid_until_31_January_2021/leffenberger/BSTIM-Covid19/src
+#$ -e /net/projects/scratch/summer/valid_until_31_January_2021/leffenberger/BSTIM-Covid19/logs_backup/e_$TASK_ID.txt
+#$ -o //net/projects/scratch/summer/valid_until_31_January_2021/leffenberger/BSTIM-Covid19/logs_backup/o_$TASK_ID.txt
+echo "#$ -pe default 4"
 
 echo "Running job ${JOB_ID}, task ${SGE_TASK_ID} on `hostname`."
 

@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 from config import *
 from shared_utils import *
@@ -7,7 +9,7 @@ import numpy as np
 from collections import OrderedDict
 from pymc3.stats import quantiles
 
-def curves_appendix(use_interactions=True, use_repot_delay=True, save_plot=False):
+def curves_appendix(use_interactions=True, use_report_delay=True, save_plot=False):
     with open('../data/counties/counties.pkl', "rb") as f:
         counties = pkl.load(f)
 
@@ -81,19 +83,20 @@ def curves_appendix(use_interactions=True, use_repot_delay=True, save_plot=False
     prediction_region = "germany"
 
     data = load_daily_data(disease, prediction_region, counties)
-    data = data[data.index < pd.Timestamp(2020, 3, 30)]
+    data = data[data.index < pd.Timestamp(2020, 4, 25)]
 
     _, target, _, _ = split_data(
         data, train_start=pd.Timestamp(
             2020, 1, 28), test_start=pd.Timestamp(
-            2020, 3, 30), post_test=pd.Timestamp(
-            2020, 3, 31)) # plots for the training period!
+            2020, 4, 22), post_test=pd.Timestamp(
+            2020, 4, 24)) # plots for the training period!
     county_ids = target.columns
 
         # Load our prediction samples
     res = load_pred(disease, use_interactions, use_report_delay)
-    n_days = 62 # for now; get from timestamps up top! / configs!
+    n_days = 85 # for now; get from timestamps up top! / configs!
 
+   
     prediction_samples = np.reshape(res['y'], (res['y'].shape[0], n_days, -1)) 
     prediction_quantiles = quantiles(prediction_samples, (5, 25, 75, 95))
 
@@ -198,7 +201,7 @@ def curves_appendix(use_interactions=True, use_repot_delay=True, save_plot=False
             va='center', rotation='vertical', fontsize=22)
     
     if save_plot:
-        plt.savefig("../figures/curves_{}_appendix.pdf".format(disease))
+        plt.savefig("../figures/luke_curves_{}_appendix.pdf".format(disease))
 
     return plt
 
