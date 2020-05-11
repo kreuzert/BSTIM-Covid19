@@ -191,12 +191,6 @@ class BaseModel(object):
         self.include_periodic = include_periodic
         self.trange = trange
 
-
-        # hardcoded for testing: Start Ger; Lockdown Ger; First Restr. lifeted Ger
-        ia_trend_switchpoints = [pd.Timestamp('2020-01-28'), 
-                                 pd.Timestamp('2020-03-16'), 
-                                 pd.Timestamp('2020-04-20')]
-
         self.features = {
             "temporal_trend": {
                 "temporal_polynomial_{}".format(i): TemporalPolynomialFeature(
@@ -213,9 +207,6 @@ class BaseModel(object):
                         "[0-5)",
                         "[5-20)",
                         "[20-65)"]} if self.include_demographics else {},
-            # "interaction_trend": {
-            #     "ia_trend_sigmoid_{}".format(i): TemporalSigmoidFeature(
-            #         ia_trend_switchpoints[i], 2.0) for i in range(3)},
             "temporal_report_delay" : {
                  "report_delay": ReportDelayPolynomialFeature(
                      pd.Timestamp('2020-04-17'), pd.Timestamp('2020-04-22'), 4)}
@@ -283,13 +274,6 @@ class BaseModel(object):
             # δ = 1/√α
             δ = pm.HalfCauchy("δ", 10, testval=1.0)
             α = pm.Deterministic("α", np.float32(1.0) / δ)
-
-            # time-varying ~~~ W_ia ->
-            # TODO: match up the dimensions
-            # W_ia_t = pm.Normal("W_t_ia", mu=0, sd=10, 
-            #                    testval=np.zeros(num_ia_t), shape=num_ia_t)
-            # kappa = pm.Deterministic("kappa", tt.dot(I_T, W_ia_t))
-            # sigma_ia = pm.HalfCauchy("sigma_ia", 10, testval=1.0)
 
             switchpoint = pm.DiscreteUniform('switchpoint', 
                                              lower=day_feature.min(), 

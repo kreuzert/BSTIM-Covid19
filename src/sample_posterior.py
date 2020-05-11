@@ -23,7 +23,7 @@ prediction_region = "germany"
 
 ##### OVERWRITE FOR IA(t) TEST #####
 use_interactions = True
-use_report_delay = True
+use_report_delay = False
 
 filename_params = "../data/mcmc_samples_backup/parameters_{}_{}_{}".format(
     disease, use_interactions, use_report_delay)
