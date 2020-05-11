@@ -222,6 +222,7 @@ class BaseModel(object):
                             self.county_info,
                             "total",
                             1.0 / 100000)}}
+        self.Q = np.eye(self.num_ia, dtype=np.float32)
 
     def evaluate_features(self, days, counties):
         all_features = {}
@@ -270,20 +271,21 @@ class BaseModel(object):
             δ = pm.HalfCauchy("δ", 10, testval=1.0)
             α = pm.Deterministic("α", np.float32(1.0) / δ)
 
-            ia_switchpoint = pm.DiscreteUniform('ia_switchpoint',
-                                                lower=days_feature.min(),
-                                                upper=days_feature.max(),
-                                                testval=2)
+            switchpoint = pm.DiscreteUniform('switchpoint',
+                                             lower=days_feature.min(),
+                                             upper=days_feature.max(),
+                                             testval=2)
 
 
             # calculate interaction effects based on switchpoint
-            W_ia_1 = pm.Normal("W_ia_1", mu=0, sd=10, 
-                                testval=np.zeros(self.num_ia), shape=self.num_ia)
-            W_ia_2 = pm.Normal("W_ia_2", mu=0, sd=10,
-                                testval=np.zeros(self.num_ia), shape=self.num_ia)
-            IA_ef = pm.math.switch(ia_switchpoint >= days_feature,
-                                   tt.dot(IA, W_ia_1),
-                                   tt.dot(IA, W_ia_2))
+            W_ia1 = pm.Normal("W_ia1", mu=0, sd=10, 
+                              testval=np.zeros(self.num_ia), shape=self.num_ia)
+            W_ia2 = pm.Normal("W_ia2", mu=0, sd=10,
+                              testval=np.zeros(self.num_ia), shape=self.num_ia)
+
+            IA_ef = pm.math.switch(switchpoint >= days_feature,
+                                   tt.dot(tt.dot(IA, self.Q), W_ia1),
+                                   tt.dot(tt.dot(IA, self.Q), W_ia2))
 
             W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
                               testval=np.zeros(num_t_s), shape=num_t_s)
@@ -293,8 +295,8 @@ class BaseModel(object):
                               testval=np.zeros(num_t_d), shape=num_t_d)
             W_ts = pm.Normal("W_ts", mu=0, sd=10,
                              testval=np.zeros(num_ts), shape=num_ts)
-            self.param_names = ["δ", "W_ia_1", "W_ia_2", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
-            self.params = [δ, W_ia_1, W_ia_2, W_t_s, W_t_t, W_t_d, W_ts]
+            self.param_names = ["δ", "W_ia1", "W_ia2", "W_t_s", "W_t_t", "W_t_d", "W_ts"]
+            self.params = [δ, W_ia1, W_ia2, W_t_s, W_t_t, W_t_d, W_ts]
 
             # calculate mean rates
             μ = pm.Deterministic(
