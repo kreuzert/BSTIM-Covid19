@@ -182,6 +182,7 @@ class BaseModel(object):
             trend_poly_order=4,
             include_periodic=True,
             periodic_poly_order=4,
+            switchpoint=42,
             orthogonalize=False):
 
         self.county_info = counties
@@ -196,6 +197,7 @@ class BaseModel(object):
         self.include_periodic = include_periodic
         self.periodic_poly_order = periodic_poly_order
         self.trange = trange # 0 -> 28th of Jan; 1-> Last
+        self.switchpoint = switchpoint
 
         self.features = {
             "temporal_trend": {
@@ -270,19 +272,13 @@ class BaseModel(object):
             δ = pm.HalfCauchy("δ", 10, testval=1.0)
             α = pm.Deterministic("α", np.float32(1.0) / δ)
 
-            switchpoint = pm.DiscreteUniform('switchpoint',
-                                             lower=days_feature.min(),
-                                             upper=days_feature.max(),
-                                             testval=42)
-
-
             # calculate interaction effects based on switchpoint
             W_ia1 = pm.Normal("W_ia1", mu=0, sd=10, 
                               testval=np.zeros(self.num_ia), shape=self.num_ia)
             W_ia2 = pm.Normal("W_ia2", mu=0, sd=10,
                               testval=np.zeros(self.num_ia), shape=self.num_ia)
 
-            IA_ef = pm.math.switch(switchpoint >= days_feature,
+            IA_ef = pm.math.switch(self.switchpoint >= days_feature,
                                    tt.dot(IA, W_ia1),
                                    tt.dot(IA, W_ia2))
 

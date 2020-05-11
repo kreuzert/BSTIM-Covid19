@@ -6,6 +6,8 @@ import pickle as pkl
 import pandas as pd
 import os
 
+i = int(os.environ["SGE_TASK_ID"]) - 1
+
 #NOTE: for jureca, extend to the number of available cores (chains and cores!)
 num_samples = 250
 num_chains = 4
@@ -38,13 +40,14 @@ data_train, target_train, data_test, target_test = split_data(
 )
 
 tspan = (target_train.index[0], target_train.index[-1])
+switchpoint = range((last_day - first_day).days)[i]
 
-filename_params = "../data/mcmc_samples_backup/parameters_swp_{}_distr".format(disease)
-filename_pred = "../data/mcmc_samples_backup/predictions_swp_{}_distr".format(disease)
-filename_model = "../data/mcmc_samples_backup/model_swp_{}_distr".format(disease)
+filename_params = "../data/mcmc_samples_backup/parameters_swp_{}_{}".format(disease, switchpoint)
+filename_pred = "../data/mcmc_samples_backup/predictions_swp_{}_{}".format(disease, switchpoint)
+filename_model = "../data/mcmc_samples_backup/model_swp_{}_{}".format(disease, switchpoint)
 
-print("training switchpoint distribution for {} in {} from {} to {}\nWill create files {}, {} and {}".format(
-    disease, prediction_region, *tspan, filename_params, filename_pred, filename_model))
+print("training switchpoint at day {} for {} in {} from {} to {}\nWill create files {}, {} and {}".format(
+    switchpoint, disease, prediction_region, *tspan, filename_params, filename_pred, filename_model))
 
 model = BaseModel(tspan,
                   county_info,
@@ -54,7 +57,8 @@ model = BaseModel(tspan,
                   include_report_delay=use_report_delay,
                   include_demographics=use_demographics,
                   trend_poly_order=trend_order,
-                  periodic_poly_order=periodic_order)
+                  periodic_poly_order=periodic_order,
+                  switchpoint=switchpoint)
 
 print("Sampling parameters on the training set.")
 trace = model.sample_parameters(
