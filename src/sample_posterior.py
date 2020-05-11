@@ -23,9 +23,9 @@ use_ia, use_report_delay, use_demographics, trend_order, periodic_order = combin
 
 # use_interactions, use_report_delay = combinations_ia_report[model_complexity]
 
-filename_params = "../data/mcmc_samples_backup/parameters_{}_{}".format(disease, i)
-filename_pred = "../data/mcmc_samples_backup/predictions_{}_{}.pkl".format(disease, i)
-filename_model = "../data/mcmc_samples_backup/model_{}_{}.pkl".format(disease, i)
+filename_params = "../data/mcmc_samples_backup/parameters_swp_{}_{}".format(disease, i)
+filename_pred = "../data/mcmc_samples_backup/predictions_swp_{}_{}.pkl".format(disease, i)
+filename_model = "../data/mcmc_samples_backup/model_swp_{}_{}.pkl".format(disease, i)
 
 # Load data
 with open('../data/counties/counties.pkl', "rb") as f:
@@ -57,7 +57,7 @@ model = BaseModel(tspan,
                   include_demographics=use_demographics,
                   trend_poly_order=trend_order,
                   periodic_poly_order=periodic_order)
-
+"""
 print("Sampling parameters on the training set.")
 trace = model.sample_parameters(
     target_train,
@@ -73,9 +73,15 @@ with open(filename_model, "wb") as f:
 
 with model.model:
     pm.save_trace(trace, filename_params, overwrite=True)
+"""
+
+"""
+>>>> predictions with a hierarchical switchpoint are hard to get and not the goal?
+>>>> Load traces and inspect after the fact!
 
 print("Sampling predictions on the training set.")
 
 pred = model.sample_predictions(target_train.index, target_train.columns, trace)
 with open(filename_pred, 'wb') as f:
      pkl.dump(pred, f)
+ """
