@@ -6,26 +6,20 @@ import pickle as pkl
 import pandas as pd
 import os
 
-# SGE_TASK_ID=4 python sample_posterior.py
-i = int(os.environ["SGE_TASK_ID"])-1
-
 #NOTE: for jureca, extend to the number of available cores (chains and cores!)
 num_samples = 250
 num_chains = 4
 num_cores = num_chains
 
-# model_complexity, disease = combinations[i]
-
 disease = "covid19"
 prediction_region = "germany"
 
-use_ia, use_report_delay, use_demographics, trend_order, periodic_order = combinations[i]
-
-# use_interactions, use_report_delay = combinations_ia_report[model_complexity]
-
-filename_params = "../data/mcmc_samples_backup/parameters_swp_{}_{}".format(disease, i)
-filename_pred = "../data/mcmc_samples_backup/predictions_swp_{}_{}.pkl".format(disease, i)
-filename_model = "../data/mcmc_samples_backup/model_swp_{}_{}.pkl".format(disease, i)
+# manual parameters for switchpoint
+use_ia = True
+use_report_delay = True
+use_demographics = True
+trend_order = 4
+periodic_order = 3
 
 # Load data
 with open('../data/counties/counties.pkl', "rb") as f:
@@ -39,14 +33,18 @@ last_day = data.index.max()
 data_train, target_train, data_test, target_test = split_data(
     data,
     train_start=first_day,
-    test_start=last_day - pd.Timedelta(days=1),
+    test_start=last_day, # use the entire dataset to determine a switchpoint
     post_test=last_day + pd.Timedelta(days=1)
 )
 
 tspan = (target_train.index[0], target_train.index[-1])
 
-print("training for {} in {} with model complexity {} from {} to {}\nWill create files {}, {} and {}".format(
-    disease, prediction_region, i, *tspan, filename_params, filename_pred, filename_model))
+filename_params = "../data/mcmc_samples_backup/parameters_swp_{}_distr".format(disease)
+filename_pred = "../data/mcmc_samples_backup/predictions_swp_{}_distr".format(disease)
+filename_model = "../data/mcmc_samples_backup/model_swp_{}_distr".format(disease)
+
+print("training switchpoint distribution for {} in {} from {} to {}\nWill create files {}, {} and {}".format(
+    disease, prediction_region, *tspan, filename_params, filename_pred, filename_model))
 
 model = BaseModel(tspan,
                   county_info,
@@ -57,7 +55,7 @@ model = BaseModel(tspan,
                   include_demographics=use_demographics,
                   trend_poly_order=trend_order,
                   periodic_poly_order=periodic_order)
-"""
+
 print("Sampling parameters on the training set.")
 trace = model.sample_parameters(
     target_train,
@@ -73,7 +71,7 @@ with open(filename_model, "wb") as f:
 
 with model.model:
     pm.save_trace(trace, filename_params, overwrite=True)
-"""
+
 
 """
 >>>> predictions with a hierarchical switchpoint are hard to get and not the goal?

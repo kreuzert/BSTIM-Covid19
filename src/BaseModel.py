@@ -222,7 +222,6 @@ class BaseModel(object):
                             self.county_info,
                             "total",
                             1.0 / 100000)}}
-        self.Q = np.eye(self.num_ia, dtype=np.float32)
 
     def evaluate_features(self, days, counties):
         all_features = {}
@@ -274,7 +273,7 @@ class BaseModel(object):
             switchpoint = pm.DiscreteUniform('switchpoint',
                                              lower=days_feature.min(),
                                              upper=days_feature.max(),
-                                             testval=2)
+                                             testval=42)
 
 
             # calculate interaction effects based on switchpoint
@@ -284,8 +283,8 @@ class BaseModel(object):
                               testval=np.zeros(self.num_ia), shape=self.num_ia)
 
             IA_ef = pm.math.switch(switchpoint >= days_feature,
-                                   tt.dot(tt.dot(IA, self.Q), W_ia1),
-                                   tt.dot(tt.dot(IA, self.Q), W_ia2))
+                                   tt.dot(IA, W_ia1),
+                                   tt.dot(IA, W_ia2))
 
             W_t_s = pm.Normal("W_t_s", mu=0, sd=10,
                               testval=np.zeros(num_t_s), shape=num_t_s)
