@@ -2,15 +2,15 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from shapely.geometry import Point, MultiPoint
 
-
 R = 6365.902  # km; Radius of the earth at a location within Germany.
-
 
 def jacobian_sq(latitude):
     """
-        jacobian_sq(latitude)
-
-    Computes the "square root" (Cholesky factor) of the Jacobian of the cartesian projection from polar coordinates (in degrees longitude, latitude) onto cartesian coordinates (in km east/west, north/south) at a given latitude (the projection's Jacobian is invariante wrt. longitude).
+    Computes the "square root" (Cholesky factor) of the Jacobian of 
+    the cartesian projection from polar coordinates (in degrees 
+    longitude, latitude) onto cartesian coordinates (in km east/west, 
+    north/south) at a given latitude (the projection's Jacobian is 
+    invariante wrt. longitude).
     """
     return R * (np.pi / 180.0) * \
         np.array([[np.abs(np.cos(np.deg2rad(latitude))), 0.0], [0.0, 1.0]])
@@ -18,9 +18,9 @@ def jacobian_sq(latitude):
 
 def compute_interaction(tp_1, tp_2, σs):
     """
-        compute_interaction(tp_1, tp_2, σs)
-
-    For interaction effects between two counties, Gaussian basis functions with radii σs are applied to the distances between all pairs of testpoints from both counties and averaged.
+    For interaction effects between two counties, Gaussian basis
+    functions with radii σs are applied to the distances between 
+    all pairs of testpoints from both counties and averaged.
 
     Arguments:
     ==========
@@ -41,9 +41,15 @@ def compute_interaction(tp_1, tp_2, σs):
 
 def compute_loss(shape, testpoints, σs, ϵ=np.random.randn(100, 2)):
     """
-        compute_loss(shape, testpoints, σs, ϵ)
-
-    For interaction effects between two counties, Gaussian basis functions are applied to the distance between testpoints from both counties. Cases occuring outside the `shape` of the region for which the reported cases are known should similarly contribute to interaction effects, but are missing in the dataset. To compensate for this bias, the expected fraction of 'mass' that a basis function centered around a testpoint in the county would assign to points outside the region of interest is estimated through rejection sampling.
+    For interaction effects between two counties, Gaussian basis 
+    functions are applied to the distance between testpoints from 
+    both counties. Cases occuring outside the `shape` of the region 
+    for which the reported cases are known should similarly contribute 
+    to interaction effects, but are missing in the dataset. To 
+    compensate for this bias, the expected fraction of 'mass' that 
+    a basis function centered around a testpoint in the county would 
+    assign to points outside the region of interest is estimated 
+    through rejection sampling.
 
     Arguments:
     ==========

@@ -7,48 +7,49 @@ from sampling_utils import *
 from shared_utils import *
 import sys 
 import pandas as pd
-from config_window import combinations
 
 start = int(os.environ["SGE_DATE_ID"])
-print(start)
 num_sample = int(os.environ["SGE_TASK_ID"])-1
 number_of_weeks = 3
 start_date = pd.Timestamp("2020-01-28") + pd.Timedelta(start, unit='d')
-
 disease = "covid19"
 nums_sample = range(100)
-#GID = int(os.environ["SGE_TASK_ID"])
 
 year = str(start_date)[:4]
 month = str(start_date)[5:7]
 day = str(start_date)[8:10]
-day_folder_path = "../data/ia_effect_samples/{}_{}_{}".format(year, month, day)
+day_folder_path = "../data/ia_effect_samples/{}_{}_{}".\
+                        format(year, month, day)
+
 if not os.path.isdir(day_folder_path):
     os.mkdir(day_folder_path)
 
+filename = "../data/ia_effect_samples/{}_{}_{}/{}_{}.pkl".\
+                format(year, month, day, disease, num_sample)
 
-filename = "../data/ia_effect_samples/{}_{}_{}/{}_{}.pkl".format(year, month, day, disease, num_sample)
-
-print("Running task {} - disease: {} - sample: {} - startdate: {} - number of weeks: {} y\nWill create file {}".\
-                                            format(num_sample,disease, num_sample, start_date, number_of_weeks, filename ))
+print("Running task {} - disease: {} - sample: {} - startdate: {} \
+       - number of weeks: {} y\nWill create file {}".format(
+        num_sample,disease, num_sample, start_date, number_of_weeks, filename 
+        )
+    )
 
 with open('../data/counties/counties.pkl', "rb") as f:
     counties = pkl.load(f)
-
 
 prediction_region = "germany"
 parameters = OrderedDict()
 
 # Load data
-data = load_daily_data_n_weeks(start, number_of_weeks, disease, prediction_region, counties)
-print("DaysTest")
-print(data.index)
+data = load_daily_data_n_weeks(
+    start, number_of_weeks, disease, prediction_region, counties
+    )
 # samples random times --> check the data conversion carefully
 # check if correct
 times = uniform_times_by_day(data.index)
 locs = uniform_locations_by_county(counties)
 
-#NOTE: Do we want basis functions with a longer temporal horizon? // we may want to weight them around fixed days?!
+#NOTE: Do we want basis functions with a longer temporal horizon?
+# we may want to weight them around fixed days?!
 #NOTE: Split this up, so we can get multiple basis functions!
 def temporal_bfs(x): return bspline_bfs(x, np.array(
     [0, 0, 1, 2, 3, 4, 5]) * 24 * 3600.0, 2) 

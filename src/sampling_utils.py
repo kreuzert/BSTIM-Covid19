@@ -15,6 +15,16 @@ from geo_utils import jacobian_sq
 theano.config.compute_test_value = 'off'
 
 
+
+
+
+
+
+
+
+
+#============================================================================================#
+
 def uniform_times_by_week(weeks, n=500):
     """ Samples n random timepoints within a week, per week. converts times to datetime obj."""
     res = OrderedDict()

@@ -12,11 +12,7 @@
 #SBATCH --mail-user=leffenberger@uos.de
 #SBATCH --dependency=afterany:8409343
 
-# select project
+# Select project.
 jutil env activate -p covid19dynstat
 
-# ensure SLURM output/errors directory exists
-# mkdir -p ${PROJECT}/${USER}/runs/
-
-# run tasks
 srun --exclusive -n ${SLURM_NTASKS} gridjob_produce_plots_134.slurm.sh

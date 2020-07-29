@@ -1,4 +1,7 @@
 #!/bin/bash -x
+
+# Sample ia effects on all available data.
+
 #SBATCH --job-name=RKI_IA
 #SBATCH --account=covid19dynstat
 #SBATCH --partition=batch
