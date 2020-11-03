@@ -1,13 +1,20 @@
-from shared_utils import *
-import pickle as pkl
+import argparse
+import os
+import shutil
+
+
 import numpy as np
 import pandas as pd
-import argparse
+import pickle as pkl
+
+
 from collections import OrderedDict
-from pymc3.stats import quantiles
-import os
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
+from pymc3.stats import quantiles
+
+
+from shared_utils import *
 
 
 def metadata_csv(start, n_weeks, counties, output_dir):
@@ -125,7 +132,24 @@ def plotdata_csv(start, n_weeks, csv_path, counties, output_dir):
         county_data.to_csv(fpath)
 
 
-def main(start, csv_path, output_root_dir):
+def export(start, outputdir, exportrootdir, exportoffset=0):
+    exportday = pd.Timestamp('2020-01-28') + pd.Timedelta(days=start) + pd.Timedelta(days=exportoffset)
+    export_year = str(exportday)[:4]
+    export_month = str(exportday)[5:7]
+    export_day = str(exportday)[8:10]
+    exportdir = os.path.join(
+        exportrootdir,
+        "{}_{}_{}".format(
+            export_year,
+            export_month,
+            export_day
+        )
+    )
+    Path(exportdir).mkdir(parents=True, exist_ok=True)
+    shutil.copytree(outputdir, exportdir)
+
+
+def main(start, csv_path, output_root_dir, exportdir, exportoffset):
     # default
     n_weeks = 3
     with open('../data/counties/counties.pkl', "rb") as f:
@@ -139,6 +163,8 @@ def main(start, csv_path, output_root_dir):
 
     metadata_csv(start, n_weeks, counties, output_dir)
     plotdata_csv(start, n_weeks, csv_path, counties, output_dir)
+    if exportdir:
+        export(start, output_dir, exportdir, exportoffset)
 
 
 if __name__ == "__main__":
@@ -164,6 +190,21 @@ if __name__ == "__main__":
                         default=["../csv/"],
                         help="path to output root folder")
 
+    parser.add_argument("--exportdir",
+                        nargs=1,
+                        dest="exportdir",
+                        type=str,
+                        help="path to export csv files")
+
+    parser.add_argument("--exportoffset",
+                        nargs=1,
+                        dest="exportoffset",
+                        type=int,
+                        help="Define an offset for export directory")
+
     args = parser.parse_args()
 
-    main(args.start[0], args.csvinputfile[0], args.outputrootdir[0])
+    exportdir = args.exportdir[0] if args.exportdir else None
+    exportoffset = args.exportoffset[0] if args.exportoffset else 0
+
+    main(args.start[0], args.csvinputfile[0], args.outputrootdir[0], exportdir, exportoffset)
